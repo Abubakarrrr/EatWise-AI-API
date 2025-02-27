@@ -100,6 +100,47 @@ async def upload_pdf(pdf_file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error uploading PDF: {str(e)}")
 
 
+# RAG Endpoint to retrieve relevant meals from Pinecone
+@app.post("/fetch-relevant-meals")
+async def fetch_relevant_meals(preferences: dict):
+    try:
+        # Query Pinecone with user preferences
+        preferences_obj = preferences.get("preferences")
+        query = {
+            "mealType": preferences_obj.get("mealType"),
+            "calories": preferences_obj.get("calories"),
+            "carbs": preferences_obj.get("carbs"),
+            "proteins": preferences_obj.get("proteins"),
+            "fats": preferences_obj.get("fats"),
+            "ingredients": preferences_obj.get("ingredients")
+        }
+        query_text = f"Meal Type: {query['mealType']}, Calories: {query['calories']}, Proteins: {query['proteins']}, Carbs: {query['carbs']}, Fats: {query['fats']}, Ingredients: {', '.join(query['ingredients'])}"
+        # Here, you would generate an embedding for the query and search in Pinecone
+        embedding = model.encode([query_text])[0]
+        embedding_list=embedding.tolist()
+        
+        index = pc.Index(host="https://eatwise-prkectb.svc.aped-4627-b74a.pinecone.io")
+
+        results = index.query(
+            namespace="",
+            vector=embedding_list,
+            top_k=2,
+            include_metadata=True
+        )
+        print(results)
+        
+        meals = []
+        for match in results.get("matches", []):
+            meal_metadata = match.get("metadata", {})  # Safely get metadata
+            if meal_metadata:
+                meals.append(meal_metadata)
+
+        print("Extracted Meals:", meals)  # Debugging print
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
