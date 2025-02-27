@@ -6,8 +6,12 @@ import os
 from dotenv import load_dotenv
 from pinecone import ServerlessSpec,Pinecone
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
+from google import genai
 load_dotenv()
+# Configure Gemini API
+client = genai.Client(api_key="AIzaSyCJFM3Tt4u9ngensMyKPIzV1cO390EXjSk")
+
+# Configure Pinecone API
 PINCENE_API_KEY = os.getenv("PINECONE_API_KEY")
 # Initialize FastAPI app
 app = FastAPI()
@@ -134,11 +138,77 @@ async def fetch_relevant_meals(preferences: dict):
             meal_metadata = match.get("metadata", {})  # Safely get metadata
             if meal_metadata:
                 meals.append(meal_metadata)
+                
+        user_info = {
+            "goal": "muscle gain",
+            "sex": "male",
+            "age": 25,
+            "weight": 75,  # kg
+            "height": 180,  # cm
+            "body_fat": 15,  # percentage
+            "activity_level": "high",  # e.g., sedentary, moderate, high
+            "food_exclusions": ["dairy", "peanuts"]  # List of restricted foods
+        }
 
-        print("Extracted Meals:", meals)  # Debugging print
+
+        final_recommendation = generate_final_recommendation(user_info, meals)
+        print(final_recommendation)
+
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+def generate_final_recommendation(user_info: dict, meals: list):
+    try:
+        # Ensure inputs are valid
+        if not user_info or not meals:
+            raise ValueError("User info and retrieved meals are required")
+
+        json_format = """
+        {
+            "recommended_meal": {
+                "name": "Meal Name",
+                "ingredients": ["Ingredient 1", "Ingredient 2"],
+                "calories": 0,
+                "proteins": 0,
+                "carbs": 0,
+                "fats": 0,
+                "portion_size": "Amount in grams or cups",
+                "timing": "Suggested time to eat (e.g., Breakfast, Lunch, Dinner)"
+            }
+        }
+        """
+        # Generate prompt for Gemini
+        prompt = f"""
+        User Details:
+        - Goal: {user_info.get('goal')}
+        - Sex: {user_info.get('sex')}
+        - Age: {user_info.get('age')}
+        - Weight: {user_info.get('weight')}
+        - Height: {user_info.get('height')}
+        - Body Fat: {user_info.get('body_fat')}
+        - Activity Level: {user_info.get('activity_level')}
+        - Food Exclusions: {', '.join(user_info.get('food_exclusions', []))}
+
+        Retrieved Meals:
+        {meals}
+
+       Based on the user's preferences, nutrition goals, and retrieved meals, provide the best meal recommendation strictly in the following JSON format. Do not include any explanations or additional text, only return JSON:
+        {json_format}
+        """
+
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash", contents=prompt
+        )
+        # print(response)
+        return response.text  # Return final meal recommendation
+
+    except Exception as e:
+        return f"Error generating recommendation: {str(e)}"
+
 
 
 @app.get("/")
